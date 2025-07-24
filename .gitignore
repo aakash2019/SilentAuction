@@ -1,2 +1,13 @@
-app/node_modules/
+# Firebase config files
+GoogleService-Info.plist
+google-services.json
+firebase.js
+.env*
+
+# iOS Firebase files
+ios/**/GoogleService-Info.plist
+ios/firebase_app_id_file.json
+
+# Android Firebase files
+android/app/google-services.json
 node_modules
