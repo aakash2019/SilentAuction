@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "app",
+    "name": "Silent Auction",
     "slug": "app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/ic_silent_auction.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/ic_silent_auction.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },

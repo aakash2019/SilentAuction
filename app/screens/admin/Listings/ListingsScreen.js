@@ -15,7 +15,7 @@ import {
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { Colors } from '../../../constants/Colors';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, setDoc, deleteDoc, query, where } from 'firebase/firestore';
 import { db } from '../../../firebase';
 import Item from '../../../models/Item';
 
@@ -29,10 +29,120 @@ export default function ListingsScreen() {
 
   const tabs = ['Active', 'Sold', 'Expired'];
 
+  // Check and transfer expired items
+  const checkAndTransferExpiredItems = async () => {
+    try {
+      const currentTime = new Date();
+      const activeCollection = collection(db, 'listings', 'listings', 'active');
+      const activeSnapshot = await getDocs(activeCollection);
+      
+      const expiredItems = [];
+      
+      for (const itemDoc of activeSnapshot.docs) {
+        const itemData = itemDoc.data();
+        const itemId = itemDoc.id;
+        
+        // Check if item has expired
+        const expiresAt = new Date(itemData.expiresAt);
+        if (expiresAt <= currentTime) {
+          expiredItems.push({ id: itemId, data: itemData });
+        }
+      }
+      
+      // Transfer expired items
+      for (const expiredItem of expiredItems) {
+        await transferItemToExpired(expiredItem.id, expiredItem.data);
+      }
+      
+      if (expiredItems.length > 0) {
+        console.log(`Transferred ${expiredItems.length} expired items`);
+      }
+      
+    } catch (error) {
+      console.error('Error checking for expired items:', error);
+    }
+  };
+
+  // Transfer item from active to expired
+  const transferItemToExpired = async (itemId, itemData) => {
+    try {
+      console.log(`Transferring item ${itemId} to expired`);
+      
+      // 1. Add item to expired collection with updated status
+      const expiredItemData = {
+        ...itemData,
+        status: 'expired',
+        expiredAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      
+      await setDoc(doc(db, 'listings', 'listings', 'expired', itemId), expiredItemData);
+      
+      // 2. Transfer bidders subcollection
+      const biddersCollection = collection(db, 'listings', 'listings', 'active', itemId, 'bidders');
+      const biddersSnapshot = await getDocs(biddersCollection);
+      
+      const bidderUserIds = [];
+      
+      // Copy bidders to expired item
+      for (const bidderDoc of biddersSnapshot.docs) {
+        const bidderData = bidderDoc.data();
+        const bidderId = bidderDoc.id;
+        bidderUserIds.push(bidderId);
+        
+        await setDoc(
+          doc(db, 'listings', 'listings', 'expired', itemId, 'bidders', bidderId),
+          bidderData
+        );
+        
+        // Delete bidder from active item
+        await deleteDoc(doc(db, 'listings', 'listings', 'active', itemId, 'bidders', bidderId));
+      }
+      
+      // 3. Update user bid records - move from active to past with won: false
+      for (const userId of bidderUserIds) {
+        try {
+          // Check if user has this item in their active bids
+          const userActiveBidDoc = doc(db, 'users', userId, 'active', itemId);
+          const userActiveBidSnapshot = await getDoc(userActiveBidDoc);
+          
+          if (userActiveBidSnapshot.exists()) {
+            // Add to user's past bids with won: false
+            const pastBidData = {
+              ...userActiveBidSnapshot.data(),
+              won: false,
+              expiredAt: new Date().toISOString(),
+              status: 'expired'
+            };
+            
+            await setDoc(doc(db, 'users', userId, 'past', itemId), pastBidData);
+            
+            // Remove from user's active bids
+            await deleteDoc(userActiveBidDoc);
+          }
+        } catch (userError) {
+          console.error(`Error updating user ${userId} bid records:`, userError);
+        }
+      }
+      
+      // 4. Delete item from active collection (after all subcollections are handled)
+      await deleteDoc(doc(db, 'listings', 'listings', 'active', itemId));
+      
+      console.log(`Successfully transferred item ${itemId} to expired`);
+      
+    } catch (error) {
+      console.error(`Error transferring item ${itemId} to expired:`, error);
+      throw error;
+    }
+  };
+
   // Fetch items from Firestore
   const fetchItems = async () => {
     setIsLoading(true);
     try {
+      // First check and transfer any expired items
+      await checkAndTransferExpiredItems();
+      
       // Fetch active items
       const activeCollection = collection(db, 'listings', 'listings', 'active');
       const activeSnapshot = await getDocs(activeCollection);
@@ -62,6 +172,13 @@ export default function ListingsScreen() {
   // Fetch items when component mounts and when screen is focused
   useEffect(() => {
     fetchItems();
+    
+    // Set up interval to check for expired items every 5 minutes
+    const intervalId = setInterval(() => {
+      checkAndTransferExpiredItems();
+    }, 5 * 60 * 1000); // 5 minutes
+    
+    return () => clearInterval(intervalId);
   }, []);
 
   useFocusEffect(
@@ -87,6 +204,20 @@ export default function ListingsScreen() {
   const handleAddListing = () => {
     // Navigate to add listing screen
     navigation.navigate('AddItemScreen');
+  };
+
+  const handleRefreshExpired = async () => {
+    setIsLoading(true);
+    try {
+      await checkAndTransferExpiredItems();
+      await fetchItems();
+      Alert.alert('Success', 'Checked for expired items and updated listings.');
+    } catch (error) {
+      console.error('Error refreshing expired items:', error);
+      Alert.alert('Error', 'Failed to refresh expired items.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleListingPress = (item) => {
@@ -187,6 +318,22 @@ export default function ListingsScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Header with Refresh Button */}
+      <View style={styles.headerContainer}>
+        <Text style={styles.headerTitle}>Listings</Text>
+        <TouchableOpacity 
+          style={styles.refreshButton}
+          onPress={handleRefreshExpired}
+          disabled={isLoading}
+        >
+          <Ionicons 
+            name="refresh" 
+            size={20} 
+            color={isLoading ? Colors.TEXT_GRAY : Colors.PRIMARY_GREEN} 
+          />
+        </TouchableOpacity>
+      </View>
+
       {/* Tab Navigation */}
       <View style={styles.tabContainer}>
         {tabs.map(renderTabButton)}
@@ -235,6 +382,26 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.BACKGROUND_WHITE,
+  },
+  headerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 5,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: Colors.TEXT_BLACK,
+  },
+  refreshButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: Colors.BACKGROUND_LIGHT_GRAY,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   tabContainer: {
     flexDirection: 'row',

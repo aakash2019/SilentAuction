@@ -67,7 +67,6 @@ const SplashScreen = () => {
 
     return (
         <View style={styles.container}>
-            <Text style={styles.title}>Silent Auction</Text>
             <ActivityIndicator size="large" color={Colors.PRIMARY_GREEN} />
             <Text style={styles.loadingText}>{loadingText}</Text>
         </View>

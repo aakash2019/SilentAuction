@@ -1,4 +1,4 @@
-// screens/admin/AddItemScreen.js
+// screens/admin/EditItemScreen.js
 import React, { useState, useEffect } from 'react';
 import { 
   View, 
@@ -19,26 +19,27 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Colors } from '../../constants/Colors';
-import { auth, db, storage } from '../../firebase';
-import { doc, getDoc, collection, addDoc } from 'firebase/firestore';
+import { Colors } from '../../../constants/Colors';
+import { auth, db, storage } from '../../../firebase';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import Item from '../../models/Item';
 
 const { width } = Dimensions.get('window');
 
-export default function AddItemScreen({ navigation }) {
-  const [itemName, setItemName] = useState('');
-  const [description, setDescription] = useState('');
-  const [startingBid, setStartingBid] = useState('');
-  const [shippingCost, setShippingCost] = useState('0');
-  const [category, setCategory] = useState('');
-  const [condition, setCondition] = useState('');
-  const [endDate, setEndDate] = useState(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)); // Default to 7 days from now
-  const [endTime, setEndTime] = useState(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+export default function EditItemScreen({ navigation, route }) {
+  const { item } = route.params;
+  
+  const [itemName, setItemName] = useState(item?.itemName || '');
+  const [description, setDescription] = useState(item?.description || '');
+  const [startingBid, setStartingBid] = useState(item?.startingBid?.toString() || '');
+  const [shippingCost, setShippingCost] = useState(item?.shippingCost?.toString() || '0');
+  const [category, setCategory] = useState(item?.category || '');
+  const [condition, setCondition] = useState(item?.condition || '');
+  const [endDate, setEndDate] = useState(item?.endDateTime ? new Date(item.endDateTime) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+  const [endTime, setEndTime] = useState(item?.endDateTime ? new Date(item.endDateTime) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  const [photos, setPhotos] = useState([]);
+  const [photos, setPhotos] = useState(item?.photos || []);
   const [isLoading, setIsLoading] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [showImagePicker, setShowImagePicker] = useState(false);
@@ -78,7 +79,7 @@ export default function AddItemScreen({ navigation }) {
     try {
       const user = auth.currentUser;
       if (!user) {
-        Alert.alert('Error', 'You must be logged in to add items.');
+        Alert.alert('Error', 'You must be logged in to edit items.');
         navigation.goBack();
         return;
       }
@@ -87,7 +88,7 @@ export default function AddItemScreen({ navigation }) {
       const adminDoc = await getDoc(doc(db, 'admin', user.uid));
       
       if (!adminDoc.exists()) {
-        Alert.alert('Access Denied', 'Only administrators can add new items.', [
+        Alert.alert('Access Denied', 'Only administrators can edit items.', [
           { text: 'OK', onPress: () => navigation.goBack() }
         ]);
         return;
@@ -95,7 +96,7 @@ export default function AddItemScreen({ navigation }) {
 
       const adminData = adminDoc.data();
       if (!adminData.isAdmin) {
-        Alert.alert('Access Denied', 'Only administrators can add new items.', [
+        Alert.alert('Access Denied', 'Only administrators can edit items.', [
           { text: 'OK', onPress: () => navigation.goBack() }
         ]);
         return;
@@ -310,9 +311,14 @@ export default function AddItemScreen({ navigation }) {
     return errors;
   };
 
-  const handleListItem = async () => {
+  const handleUpdateItem = async () => {
     if (!isAdmin) {
-      Alert.alert('Error', 'Only administrators can add items.');
+      Alert.alert('Error', 'Only administrators can edit items.');
+      return;
+    }
+
+    if (!item?.id) {
+      Alert.alert('Error', 'Item ID not found.');
       return;
     }
 
@@ -330,19 +336,21 @@ export default function AddItemScreen({ navigation }) {
         throw new Error('User not authenticated');
       }
 
-      // Get admin details
-      const adminDoc = await getDoc(doc(db, 'admin', user.uid));
-      const adminData = adminDoc.data();
-
-      // Upload photos with error handling
+      // Process photos - upload new ones and keep existing ones
       const uploadedPhotos = [];
       let uploadErrors = [];
       
       for (let i = 0; i < photos.length; i++) {
         try {
-          const fileName = `${Date.now()}_${i}.jpg`;
-          const downloadURL = await uploadImage(photos[i], fileName);
-          uploadedPhotos.push(downloadURL);
+          // If photo is a URL (existing photo), keep it as is
+          if (photos[i].startsWith('http') || photos[i].startsWith('gs://')) {
+            uploadedPhotos.push(photos[i]);
+          } else {
+            // If photo is a local URI (new photo), upload it
+            const fileName = `${Date.now()}_${i}.jpg`;
+            const downloadURL = await uploadImage(photos[i], fileName);
+            uploadedPhotos.push(downloadURL);
+          }
         } catch (uploadError) {
           console.error(`Error uploading photo ${i}:`, uploadError);
           uploadErrors.push(`Photo ${i + 1}: ${uploadError.message}`);
@@ -351,57 +359,71 @@ export default function AddItemScreen({ navigation }) {
         }
       }
 
-      // Show warning if some uploads failed but continue with listing
+      // Show warning if some uploads failed but continue with update
       if (uploadErrors.length > 0) {
         console.warn('Some photo uploads failed:', uploadErrors);
         Alert.alert(
           'Photo Upload Warning', 
-          `Some photos failed to upload to cloud storage but the item will be listed with local photos for testing.\n\nErrors:\n${uploadErrors.join('\n')}`,
+          `Some photos failed to upload to cloud storage but the item will be updated with local photos for testing.\n\nErrors:\n${uploadErrors.join('\n')}`,
           [{ text: 'Continue', style: 'default' }]
         );
       }
 
-      // Create new item
-      const newItem = new Item({
+      // Prepare updated item data
+      const updatedData = {
         itemName: itemName.trim(),
         description: description.trim(),
-        startingBid: startingBid.trim(),
-        shippingCost: shippingCost.trim() || 0,
+        startingBid: parseFloat(startingBid.trim()),
+        shippingCost: parseFloat(shippingCost.trim()) || 0,
         category,
         condition,
         endDateTime: getEndDateTime().toISOString(),
-        photos: uploadedPhotos
-      });
+        expiresAt: getEndDateTime().toISOString(), // Update expiresAt to match endDateTime
+        photos: uploadedPhotos,
+        updatedAt: new Date().toISOString()
+      };
 
-      // Validate the item
-      const validationErrors = newItem.validate();
-      if (validationErrors.length > 0) {
-        Alert.alert('Validation Error', validationErrors.join('\n'));
-        setIsLoading(false);
-        return;
+      // Determine the collection path based on item status
+      let collectionPath;
+      if (item.status === 'active') {
+        collectionPath = 'listings/listings/active';
+      } else if (item.status === 'sold') {
+        collectionPath = 'listings/listings/sold';
+      } else {
+        collectionPath = 'listings/listings/expired';
       }
 
-      // Add to Firestore in the correct nested collection structure
-      const docRef = await addDoc(collection(db, 'listings', 'listings', 'active'), newItem.toFirestore());
-      
-      // Create bidders subcollection for this item (empty initially)
-      // This sets up the structure for future bidders
-      console.log('Item created with ID:', docRef.id);
-      console.log('Bidders collection will be created at:', `listings/listings/active/${docRef.id}/bidders`);
+      // Update in Firestore
+      const docRef = doc(db, collectionPath, item.id);
+      await updateDoc(docRef, updatedData);
 
-      Alert.alert('Success', 'Item listed successfully!', [
+      console.log('Item updated successfully with ID:', item.id);
+
+      Alert.alert('Success', 'Item updated successfully!', [
         {
           text: 'OK',
           onPress: () => {
-            // Navigate back to ListingsScreen and refresh
+            // Create updated item data
+            const updatedItem = {
+              ...item,
+              ...updatedData,
+              photos: uploadedPhotos
+            };
+            
+            // Pass updated data back to the previous screen
+            if (route.params?.onItemUpdated) {
+              route.params.onItemUpdated(updatedItem);
+            }
+            
+            // Navigate back to the previous screen
             navigation.goBack();
           }
         }
       ]);
     } catch (error) {
-      console.error('Error listing item:', error);
+      console.error('Error updating item:', error);
       
-      let errorMessage = 'Failed to list item';
+      let errorMessage = 'Failed to update item';
       
       if (error.code === 'storage/unknown' || error.code === 'storage/unauthorized') {
         errorMessage = 'Storage error: Please check Firebase Storage rules and configuration';
@@ -444,7 +466,7 @@ export default function AddItemScreen({ navigation }) {
         <TouchableOpacity onPress={handleClose}>
           <Ionicons name="arrow-back" size={24} color={Colors.TEXT_BLACK} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Add Item</Text>
+        <Text style={styles.headerTitle}>Edit Item</Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -562,17 +584,17 @@ export default function AddItemScreen({ navigation }) {
           </View>
         </View>
 
-        {/* List Item Button */}
+        {/* Update Item Button */}
         <View style={styles.buttonContainer}>
           <TouchableOpacity 
             style={[styles.listButton, isLoading && styles.disabledButton]} 
-            onPress={handleListItem}
+            onPress={handleUpdateItem}
             disabled={isLoading}
           >
             {isLoading ? (
               <ActivityIndicator size="small" color={Colors.WHITE} />
             ) : (
-              <Text style={styles.listButtonText}>List Item</Text>
+              <Text style={styles.listButtonText}>Update Item</Text>
             )}
           </TouchableOpacity>
         </View>

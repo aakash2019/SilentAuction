@@ -29,7 +29,6 @@ export default function UsersScreen() {
   const fetchUsers = async () => {
     try {
       setIsLoading(true);
-      console.log('Fetching users from Firestore...');
       
       const usersQuery = query(
         collection(db, 'users'),
@@ -48,7 +47,6 @@ export default function UsersScreen() {
         }
       });
       
-      console.log(`Fetched ${usersData.length} users from Firestore`);
       setUsers(usersData);
       setFilteredUsers(usersData);
       
@@ -107,33 +105,37 @@ export default function UsersScreen() {
   };
 
   const handleUserPress = (user) => {
-    // Navigate to user details
+    // Navigate to user details - can be implemented later
+    // For now, just basic user info logging for debugging
     console.log('User pressed:', user.getDisplayName());
-    console.log('User details:', {
-      uid: user.uid,
-      email: user.email,
-      isAdmin: user.hasAdminPrivileges(),
-      isActive: user.isAccountActive(),
-      joinedDate: formatJoinDate(user.createdAt)
-    });
   };
 
-  const renderUserItem = ({ item }) => (
-    <TouchableOpacity 
-      style={styles.userItem}
-      onPress={() => handleUserPress(item)}
-    >
-      <View style={styles.avatarContainer}>
-        {item.profileImageUrl ? (
-          <Image source={{ uri: item.profileImageUrl }} style={styles.avatar} />
-        ) : (
-          <View style={styles.avatarPlaceholder}>
-            <Text style={styles.avatarText}>
-              {item.getDisplayName().charAt(0).toUpperCase()}
-            </Text>
-          </View>
-        )}
-      </View>
+  const renderUserItem = ({ item }) => {
+    // Check for profile image in different possible field names
+    const profileImageUrl = item.profileImage || item.profileImageUrl || item.photoURL || null;
+    
+    return (
+      <TouchableOpacity 
+        style={styles.userItem}
+        onPress={() => handleUserPress(item)}
+      >
+        <View style={styles.avatarContainer}>
+          {profileImageUrl ? (
+            <Image 
+              source={{ uri: profileImageUrl }} 
+              style={styles.avatar}
+              onError={() => {
+                // Handle image load error silently
+              }}
+            />
+          ) : (
+            <View style={styles.avatarPlaceholder}>
+              <Text style={styles.avatarText}>
+                {item.getInitials()}
+              </Text>
+            </View>
+          )}
+        </View>
       <View style={styles.userInfo}>
         <View style={styles.userNameRow}>
           <Text style={styles.userName}>{item.getDisplayName()}</Text>
@@ -152,16 +154,15 @@ export default function UsersScreen() {
         <Text style={styles.userJoinDate}>
           Joined: {formatJoinDate(item.createdAt)}
         </Text>
-      </View>
-      <Ionicons 
-        name="chevron-forward" 
-        size={20} 
-        color={Colors.TEXT_GRAY} 
-      />
-    </TouchableOpacity>
-  );
-
-  return (
+        </View>
+        <Ionicons 
+          name="chevron-forward" 
+          size={20} 
+          color={Colors.TEXT_GRAY} 
+        />
+      </TouchableOpacity>
+    );
+  };  return (
     <SafeAreaView style={styles.container}>
       {/* Search Bar */}
       <View style={styles.searchContainer}>

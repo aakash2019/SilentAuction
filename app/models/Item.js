@@ -48,13 +48,18 @@ export class Item {
     shippingCost = 0,
     category,
     condition,
-    duration,
+    endDateTime = null,
     photos = [],
     totalBids = 0,
     status = 'active', // active, sold, expired
     createdAt = null,
     expiresAt = null,
-    updatedAt = null
+    updatedAt = null,
+    buyerId = null,
+    buyerName = null,
+    buyerEmail = null,
+    finalBidAmount = null,
+    soldAt = null
   }) {
     this.id = id;
     this.itemName = itemName;
@@ -63,32 +68,24 @@ export class Item {
     this.shippingCost = parseFloat(shippingCost);
     this.category = category;
     this.condition = condition;
-    this.duration = duration;
+    this.endDateTime = endDateTime;
     this.photos = photos;
     this.totalBids = totalBids;
     this.status = status;
     this.createdAt = createdAt || new Date().toISOString();
-    this.expiresAt = expiresAt || this.calculateExpiryDate(duration);
+    this.expiresAt = expiresAt || endDateTime || this.calculateDefaultExpiryDate();
     this.updatedAt = updatedAt || new Date().toISOString();
+    this.buyerId = buyerId;
+    this.buyerName = buyerName;
+    this.buyerEmail = buyerEmail;
+    this.finalBidAmount = finalBidAmount ? parseFloat(finalBidAmount) : null;
+    this.soldAt = soldAt;
   }
 
-  // Calculate expiry date based on duration
-  calculateExpiryDate(duration) {
+  // Calculate default expiry date (7 days from now if no endDateTime provided)
+  calculateDefaultExpiryDate() {
     const now = new Date();
-    switch (duration) {
-      case '1 day':
-        return new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
-      case '3 days':
-        return new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString();
-      case '7 days':
-        return new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
-      case '14 days':
-        return new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
-      case '30 days':
-        return new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
-      default:
-        return new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
-    }
+    return new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
   }
 
   // Validate item data
@@ -119,8 +116,13 @@ export class Item {
       errors.push('Condition is required');
     }
 
-    if (!this.duration) {
-      errors.push('Duration is required');
+    if (!this.endDateTime) {
+      errors.push('End date and time is required');
+    } else {
+      const endDate = new Date(this.endDateTime);
+      if (endDate <= new Date()) {
+        errors.push('End date and time must be in the future');
+      }
     }
 
     if (!this.photos || this.photos.length === 0) {
@@ -139,13 +141,18 @@ export class Item {
       shippingCost: this.shippingCost,
       category: this.category,
       condition: this.condition,
-      duration: this.duration,
+      endDateTime: this.endDateTime,
       photos: this.photos,
       totalBids: this.totalBids,
       status: this.status,
       createdAt: this.createdAt,
       expiresAt: this.expiresAt,
-      updatedAt: this.updatedAt
+      updatedAt: this.updatedAt,
+      buyerId: this.buyerId,
+      buyerName: this.buyerName,
+      buyerEmail: this.buyerEmail,
+      finalBidAmount: this.finalBidAmount,
+      soldAt: this.soldAt
     };
   }
 

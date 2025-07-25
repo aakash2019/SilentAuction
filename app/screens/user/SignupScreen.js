@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { createNavigationContainerRef, useNavigation } from '@react-navigation/native';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { getFirestore, doc, setDoc } from 'firebase/firestore';
+import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import { auth } from '../../firebase';
 import { Colors } from '../../constants/Colors';
 import User from '../../models/User'; 
@@ -46,24 +47,37 @@ export default function SignUpScreen() {
       return;
     }
 
-    // Create user model for validation
-    const newUser = new User({
-      fullName: fullName.trim(),
-      email: email.trim().toLowerCase(),
-      isAdmin: false
-    });
-
-    // Validate user data
-    const validationErrors = newUser.validate();
-    if (validationErrors.length > 0) {
-      Alert.alert('Validation Error', validationErrors.join('\n'));
-      return;
-    }
-
     setIsLoading(true);
 
     try {
       const db = getFirestore();
+      const storage = getStorage();
+
+      // Get default profile image URL
+      let defaultProfileImageUrl = null;
+      try {
+        const defaultImageRef = ref(storage, 'users/1.png');
+        defaultProfileImageUrl = await getDownloadURL(defaultImageRef);
+      } catch (imageError) {
+        console.log('Could not load default profile image:', imageError);
+        // Continue without default image if it fails
+      }
+
+      // Create user model for validation
+      const newUser = new User({
+        fullName: fullName.trim(),
+        email: email.trim().toLowerCase(),
+        isAdmin: false,
+        profileImage: defaultProfileImageUrl // Default profile image URL
+      });
+
+      // Validate user data
+      const validationErrors = newUser.validate();
+      if (validationErrors.length > 0) {
+        Alert.alert('Validation Error', validationErrors.join('\n'));
+        setIsLoading(false);
+        return;
+      }
 
       // Create Firebase Auth user
       const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);

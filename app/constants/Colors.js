@@ -3,6 +3,7 @@ export const Colors = {
   // Primary Colors
   PRIMARY_GREEN: '#38E07A',
   PRIMARY_RED: '#d9534f',
+  USER_BID_YELLOW: '#FFB800', // Yellow color for logged-in user's bids
   
   // Text Colors
   TEXT_BLACK: '#121714',

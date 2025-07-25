@@ -10,6 +10,7 @@ import DashboardScreen from '../screens/admin/DashboardScreen';
 import ListingsScreen from '../screens/admin/Listings/ListingsScreen';
 import UsersScreen from '../screens/admin/UsersScreen';
 import AddItemScreen from '../screens/admin/AddItemScreen';
+import EditItemScreen from '../screens/admin/Listings/EditItemScreen';
 import ItemScreen from '../screens/admin/Listings/ItemScreen'; 
 
 import LoginScreen from '../screens/user/LoginScreen';
@@ -18,6 +19,7 @@ import HomeScreen from '../screens/user/HomeScreen';
 import BidScreen from '../screens/user/BidScreen';
 import SearchScreen from '../screens/user/SearchScreen';
 import ProfileScreen from '../screens/user/ProfileScreen';
+import UserItemScreen from '../screens/user/UserItemScreen';
 
 const Stack = createStackNavigator();
 
@@ -32,6 +34,7 @@ const AppNavigator = () => (
     <Stack.Screen name="UsersScreen" component={UsersScreen} />
     <Stack.Screen name="SettingsScreen" component={SettingsScreen} />
     <Stack.Screen name="AddItemScreen" component={AddItemScreen} />
+    <Stack.Screen name="EditItemScreen" component={EditItemScreen} />
     <Stack.Screen name="ItemScreen" component={ItemScreen} />
     <Stack.Screen name="LoginScreen" component={LoginScreen} />
     <Stack.Screen name="SignupScreen" component={SignUpScreen} />
@@ -39,6 +42,7 @@ const AppNavigator = () => (
     <Stack.Screen name="ProfileScreen" component={ProfileScreen} />
     <Stack.Screen name="BidScreen" component={BidScreen} />
     <Stack.Screen name="SearchScreen" component={SearchScreen} />
+    <Stack.Screen name="UserItemScreen" component={UserItemScreen} />
   </Stack.Navigator>
 );
 
