@@ -4,7 +4,6 @@ import SplashScreen from '../screens/SplashScreen';
 import AdminTabNavigator from './AdminTabNavigator';
 import UserTabNavigator from './UserTabNavigator';
 
-import AdminLoginScreen from '../screens/admin/AdminLoginScreen';
 import SettingsScreen from '../screens/admin/SettingsScreen';
 import DashboardScreen from '../screens/admin/DashboardScreen';
 import ListingsScreen from '../screens/admin/Listings/ListingsScreen';
@@ -13,8 +12,9 @@ import AddItemScreen from '../screens/admin/AddItemScreen';
 import EditItemScreen from '../screens/admin/Listings/EditItemScreen';
 import ItemScreen from '../screens/admin/Listings/ItemScreen'; 
 
-import LoginScreen from '../screens/user/LoginScreen';
-import SignUpScreen from '../screens/user/SignupScreen';
+import LoginScreen from '../screens/auth/LoginScreen';
+import SignUpScreen from '../screens/auth/SignupScreen';
+
 import HomeScreen from '../screens/user/HomeScreen';
 import BidScreen from '../screens/user/BidScreen';
 import SearchScreen from '../screens/user/SearchScreen';
@@ -28,7 +28,6 @@ const AppNavigator = () => (
     <Stack.Screen name="SplashScreen" component={SplashScreen} />
     <Stack.Screen name="AdminTabNavigator" component={AdminTabNavigator} />
     <Stack.Screen name="UserTabNavigator" component={UserTabNavigator} />
-    <Stack.Screen name="AdminLoginScreen" component={AdminLoginScreen} />
     <Stack.Screen name="DashboardScreen" component={DashboardScreen} />
     <Stack.Screen name="ListingsScreen" component={ListingsScreen} />
     <Stack.Screen name="UsersScreen" component={UsersScreen} />

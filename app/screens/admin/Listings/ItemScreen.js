@@ -19,6 +19,7 @@ import { Colors } from '../../../constants/Colors';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { collection, getDocs, query, orderBy, limit, doc, deleteDoc, setDoc, addDoc, getDoc, increment } from 'firebase/firestore';
 import { db } from '../../../firebase';
+import NotificationService from '../../../services/NotificationService';
 
 const { width } = Dimensions.get('window');
 
@@ -44,7 +45,6 @@ export default function ItemScreen() {
     
     setIsLoadingBidders(true);
     try {
-      console.log('Fetching bidders for item:', item.id);
       
       // Get the collection path based on item status
       let collectionPath;
@@ -91,7 +91,6 @@ export default function ItemScreen() {
             });
           }
         } catch (userError) {
-          console.error(`Error fetching user data for ${bidData.bidderId}:`, userError);
           // Fallback with minimal data
           biddersData.push({
             ...bidData,
@@ -102,10 +101,8 @@ export default function ItemScreen() {
         }
       }
 
-      console.log(`Found ${biddersData.length} bidders`);
       setBidders(biddersData);
     } catch (error) {
-      console.error('Error fetching bidders:', error);
       Alert.alert('Error', 'Failed to load bidders information.');
     } finally {
       setIsLoadingBidders(false);
@@ -114,6 +111,16 @@ export default function ItemScreen() {
 
   // Calculate time remaining with seconds
   const calculateTimeRemaining = () => {
+    // Check if item is sold first
+    if (item?.status === 'sold') {
+      return { text: 'Item Sold', expired: true, sold: true };
+    }
+    
+    // Check if item is expired
+    if (item?.status === 'expired') {
+      return { text: 'Expired', expired: true };
+    }
+
     if (!item?.expiresAt) return { text: 'No expiry date', expired: true };
 
     try {
@@ -139,7 +146,6 @@ export default function ItemScreen() {
         expired: false
       };
     } catch (error) {
-      console.error('Error calculating time remaining:', error);
       return { text: 'Unknown', expired: true };
     }
   };
@@ -174,11 +180,9 @@ export default function ItemScreen() {
 
   const handleEditPress = () => {
     // Navigate to edit item screen with callback
-    console.log('Edit item pressed:', item?.itemName);
     navigation.navigate('EditItemScreen', { 
       item,
       onItemUpdated: (updatedItem) => {
-        console.log('Item updated callback received:', updatedItem.itemName);
         setItem(updatedItem);
       }
     });
@@ -225,8 +229,6 @@ export default function ItemScreen() {
       const docRef = doc(db, collectionPath, item.id);
       await deleteDoc(docRef);
 
-      console.log('Item deleted successfully with ID:', item.id);
-
       // Show success message and navigate back to admin tab navigator
       Alert.alert(
         'Success',
@@ -258,7 +260,6 @@ export default function ItemScreen() {
         ]
       );
     } catch (error) {
-      console.error('Error deleting item:', error);
       
       let errorMessage = 'Failed to delete item';
       
@@ -341,7 +342,6 @@ export default function ItemScreen() {
           await deleteDoc(activeBidDocRef);
 
         } catch (userError) {
-          console.error(`Error updating user ${bidder.bidderId} bids:`, userError);
           // Continue with other users even if one fails
         }
       }
@@ -362,12 +362,33 @@ export default function ItemScreen() {
           const purchasedDocRef = doc(db, `users/${selectedBuyer.bidderId}/purchased`, item.id);
           await setDoc(purchasedDocRef, purchaseData);
         } catch (purchaseError) {
-          console.error('Error adding to purchased collection:', purchaseError);
           // Don't fail the entire operation for this
         }
       }
 
-      console.log('Item marked as sold successfully');
+      // 5. Create win notification for the selected buyer
+      try {
+        await NotificationService.createWinNotification(
+          selectedBuyer.bidderId,
+          item.id,
+          item.itemName,
+          selectedBuyer.bidAmount
+        );
+      } catch (notificationError) {
+        // Don't fail the entire operation if notification fails
+      }
+
+      // Update local item state to reflect the sold status
+      setItem(prevItem => ({
+        ...prevItem,
+        status: 'sold',
+        buyerId: selectedBuyer.bidderId,
+        buyerName: selectedBuyer.fullName || 'Unknown User',
+        buyerEmail: selectedBuyer.email || '',
+        finalBidAmount: selectedBuyer.bidAmount,
+        soldAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }));
 
       Alert.alert(
         'Success',
@@ -400,7 +421,6 @@ export default function ItemScreen() {
         ]
       );
     } catch (error) {
-      console.error('Error marking item as sold:', error);
       Alert.alert('Error', 'Failed to mark item as sold. Please try again.');
     } finally {
       setIsMarkingSold(false);
@@ -772,8 +792,17 @@ export default function ItemScreen() {
             <Text style={styles.timerCardLabel}>Time Remaining</Text>
             {timeRemaining?.expired ? (
               <View style={styles.expiredContainer}>
-                <Ionicons name="time-outline" size={24} color="#FF6B6B" />
-                <Text style={styles.expiredText}>Auction Expired</Text>
+                {timeRemaining?.sold ? (
+                  <>
+                    <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
+                    <Text style={[styles.expiredText, { color: '#4CAF50' }]}>Item Sold</Text>
+                  </>
+                ) : (
+                  <>
+                    <Ionicons name="time-outline" size={24} color="#FF6B6B" />
+                    <Text style={styles.expiredText}>Auction Expired</Text>
+                  </>
+                )}
               </View>
             ) : (
               <View style={styles.countdownContainer}>
@@ -799,7 +828,9 @@ export default function ItemScreen() {
               </View>
             )}
             <Text style={styles.expiryText}>
-              Expires: {formatDate(item?.expiresAt)}
+              {timeRemaining?.sold 
+                ? `Sold: ${formatDate(item?.soldAt)}` 
+                : `Expires: ${formatDate(item?.expiresAt)}`}
             </Text>
           </View>
 

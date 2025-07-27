@@ -49,9 +49,7 @@ export default function ProfileScreen({}) {
       
       setProfilePicsCache(profilePicUrls);
       setIsCacheLoaded(true);
-      console.log(`Cached ${profilePicUrls.length} profile pictures`);
     } catch (error) {
-      console.error('Error pre-loading profile pictures:', error);
     }
   };
 
@@ -83,7 +81,6 @@ export default function ProfileScreen({}) {
       setProfilePicsCache(profilePicUrls); // Cache for next time
       setIsCacheLoaded(true);
     } catch (error) {
-      console.error('Error fetching profile pictures:', error);
       Alert.alert('Error', 'Failed to load profile pictures');
     } finally {
       setIsLoadingProfilePics(false);
@@ -114,7 +111,6 @@ export default function ProfileScreen({}) {
       Alert.alert('Success', 'Profile picture updated successfully!');
       
     } catch (error) {
-      console.error('Error updating profile picture:', error);
       Alert.alert('Error', 'Failed to update profile picture');
     } finally {
       setIsUpdatingProfilePic(false);
@@ -154,7 +150,6 @@ export default function ProfileScreen({}) {
         });
       }
     } catch (error) {
-      console.error('Error fetching user data:', error);
     }
   };
 
@@ -202,7 +197,6 @@ export default function ProfileScreen({}) {
             }
           }
         } catch (error) {
-          console.error(`Error fetching item ${itemId}:`, error);
         }
       }
       
@@ -211,14 +205,12 @@ export default function ProfileScreen({}) {
       setUserBids(bidsData);
       
     } catch (error) {
-      console.error('Error fetching user bids:', error);
     }
   };
 
   // Fetch user's won items from users/'userId'/past where won: true
   const fetchUserWonItems = async (userId) => {
     try {
-      console.log('Fetching won items for user:', userId);
       
       // Get user's past bids from users collection
       const pastBidsQuery = query(collection(db, `users/${userId}/past`));
@@ -254,7 +246,6 @@ export default function ProfileScreen({}) {
                   userFinalBidAmount = bidderDoc.data().bidAmount || 0;
                 }
               } catch (bidderError) {
-                console.error(`Error fetching user bid amount for won item ${itemId}:`, bidderError);
               }
               
               wonItemsData.push({
@@ -276,7 +267,6 @@ export default function ProfileScreen({}) {
               });
             }
           } catch (error) {
-            console.error(`Error fetching won item ${itemId}:`, error);
           }
         }
       }
@@ -284,10 +274,8 @@ export default function ProfileScreen({}) {
       // Sort by sold date (most recent first)
       wonItemsData.sort((a, b) => new Date(b.soldAt) - new Date(a.soldAt));
       setUserWonItems(wonItemsData);
-      console.log(`Found ${wonItemsData.length} won items for user`);
       
     } catch (error) {
-      console.error('Error fetching user won items:', error);
     }
   };
 
@@ -297,7 +285,6 @@ export default function ProfileScreen({}) {
       // For now, set empty array - can be implemented later when users can list items
       setUserItems([]);
     } catch (error) {
-      console.error('Error fetching user items:', error);
     }
   };
 
@@ -314,7 +301,6 @@ export default function ProfileScreen({}) {
         fetchUserWonItems(userId)
       ]);
     } catch (error) {
-      console.error('Error fetching user data:', error);
     } finally {
       if (showLoading) {
         setIsLoading(false);
@@ -386,7 +372,6 @@ export default function ProfileScreen({}) {
       });
       
     } catch (error) {
-      console.error('Logout error:', error);
       Alert.alert('Error', 'Failed to logout. Please try again.');
       setIsLoggingOut(false);
     }

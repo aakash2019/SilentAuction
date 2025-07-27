@@ -103,7 +103,6 @@ export default function AddItemScreen({ navigation }) {
 
       setIsAdmin(true);
     } catch (error) {
-      console.error('Error checking admin status:', error);
       Alert.alert('Error', 'Failed to verify admin status.', [
         { text: 'OK', onPress: () => navigation.goBack() }
       ]);
@@ -194,7 +193,6 @@ export default function AddItemScreen({ navigation }) {
         setPhotos(prev => [...prev, result.assets[0].uri]);
       }
     } catch (error) {
-      console.error('Error selecting image:', error);
       Alert.alert('Error', 'Failed to select image from library.');
     }
   };
@@ -222,7 +220,6 @@ export default function AddItemScreen({ navigation }) {
         setPhotos(prev => [...prev, photo.uri]);
         setCameraVisible(false);
       } catch (error) {
-        console.error('Error taking photo:', error);
         Alert.alert('Error', 'Failed to take photo.');
       }
     }
@@ -234,7 +231,6 @@ export default function AddItemScreen({ navigation }) {
 
   const uploadImage = async (uri, fileName) => {
     try {
-      console.log('Starting image upload:', { uri, fileName });
       
       const response = await fetch(uri);
       if (!response.ok) {
@@ -242,29 +238,18 @@ export default function AddItemScreen({ navigation }) {
       }
       
       const blob = await response.blob();
-      console.log('Blob created:', { size: blob.size, type: blob.type });
       
       const imageRef = ref(storage, `items/${fileName}`);
-      console.log('Storage reference created:', imageRef.fullPath);
       
       const snapshot = await uploadBytes(imageRef, blob);
-      console.log('Upload successful:', snapshot.metadata);
       
       const downloadURL = await getDownloadURL(snapshot.ref);
-      console.log('Download URL obtained:', downloadURL);
       
       return downloadURL;
     } catch (error) {
-      console.error('Error uploading image:', error);
-      console.error('Error details:', {
-        code: error.code,
-        message: error.message,
-        stack: error.stack
-      });
       
       // If storage fails, try using the local URI as fallback for testing
       if (error.code === 'storage/unknown' || error.code === 'storage/unauthorized') {
-        console.warn('Using local URI as fallback due to storage error');
         return uri; // Return local URI as fallback
       }
       throw error;
@@ -344,7 +329,6 @@ export default function AddItemScreen({ navigation }) {
           const downloadURL = await uploadImage(photos[i], fileName);
           uploadedPhotos.push(downloadURL);
         } catch (uploadError) {
-          console.error(`Error uploading photo ${i}:`, uploadError);
           uploadErrors.push(`Photo ${i + 1}: ${uploadError.message}`);
           // For testing purposes, use local URI if upload fails
           uploadedPhotos.push(photos[i]);
@@ -353,7 +337,6 @@ export default function AddItemScreen({ navigation }) {
 
       // Show warning if some uploads failed but continue with listing
       if (uploadErrors.length > 0) {
-        console.warn('Some photo uploads failed:', uploadErrors);
         Alert.alert(
           'Photo Upload Warning', 
           `Some photos failed to upload to cloud storage but the item will be listed with local photos for testing.\n\nErrors:\n${uploadErrors.join('\n')}`,
@@ -386,8 +369,7 @@ export default function AddItemScreen({ navigation }) {
       
       // Create bidders subcollection for this item (empty initially)
       // This sets up the structure for future bidders
-      console.log('Item created with ID:', docRef.id);
-      console.log('Bidders collection will be created at:', `listings/listings/active/${docRef.id}/bidders`);
+      
 
       Alert.alert('Success', 'Item listed successfully!', [
         {
@@ -399,7 +381,6 @@ export default function AddItemScreen({ navigation }) {
         }
       ]);
     } catch (error) {
-      console.error('Error listing item:', error);
       
       let errorMessage = 'Failed to list item';
       

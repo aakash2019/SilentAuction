@@ -20,6 +20,8 @@ import { Colors } from '../../constants/Colors';
 import { db, auth } from '../../firebase';
 import { collection, getDocs, query, orderBy, doc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
+import NotificationService from '../../services/NotificationService';
+import NotificationModal from '../../components/NotificationModal';
 
 const { width } = Dimensions.get('window');
 
@@ -35,7 +37,10 @@ export default function HomeScreen() {
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showPriceModal, setShowPriceModal] = useState(false);
   const [showEndingModal, setShowEndingModal] = useState(false);
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [userName, setUserName] = useState('User');
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const [currentUserId, setCurrentUserId] = useState(null);
   const categories = ['All', 'Electronics', 'Fashion', 'Home & Garden', 'Sports', 'Books', 
                     'Art & Collectibles', 'Jewelry', 'Automotive', 'Music', 'Other'];
   const priceRanges = ['All', '$0 - $50', '$50 - $100', '$100 - $250', '$250 - $500', '$500+'];
@@ -78,7 +83,6 @@ export default function HomeScreen() {
       setFilteredItems(items);
       
     } catch (error) {
-      console.error('Error fetching listings:', error);
       Alert.alert('Error', 'Failed to load auction items. Please check your connection.');
     } finally {
       setIsLoading(false);
@@ -134,8 +138,16 @@ export default function HomeScreen() {
         setUserName('User');
       }
     } catch (error) {
-      console.error('Error fetching user data:', error);
       setUserName('User');
+    }
+  };
+
+  // Fetch unread notification count
+  const fetchUnreadNotificationCount = async (userId) => {
+    try {
+      const count = await NotificationService.getUnreadCount(userId);
+      setUnreadNotificationCount(count);
+    } catch (error) {
     }
   };
 
@@ -146,9 +158,27 @@ export default function HomeScreen() {
     // Set up auth state listener to fetch user data
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
+        setCurrentUserId(user.uid);
         fetchUserData(user.uid);
+        fetchUnreadNotificationCount(user.uid);
+        
+        // Set up real-time notification listener
+        const unsubscribeNotifications = NotificationService.subscribeToNotifications(
+          user.uid,
+          (notifications) => {
+            
+            const unreadCount = notifications.filter(n => !n.isRead).length;
+            setUnreadNotificationCount(unreadCount);
+          }
+        );
+        
+        return () => {
+          unsubscribeNotifications();
+        };
       } else {
+        setCurrentUserId(null);
         setUserName('User');
+        setUnreadNotificationCount(0);
       }
     });
 
@@ -187,10 +217,11 @@ export default function HomeScreen() {
     React.useCallback(() => {
       fetchActiveListings();
       
-      // Also fetch user data when screen focuses
+      // Also fetch user data and notifications when screen focuses
       const currentUser = auth.currentUser;
       if (currentUser) {
         fetchUserData(currentUser.uid);
+        fetchUnreadNotificationCount(currentUser.uid);
       }
     }, [])
   );
@@ -262,6 +293,82 @@ export default function HomeScreen() {
 
   const handleItemPress = (item) => {
     navigation.navigate('UserItemScreen', { item });
+  };
+
+  const handleNotificationPress = () => {
+    if (currentUserId) {
+      setShowNotificationModal(true);
+    } else {
+      Alert.alert('Please Login', 'You need to be logged in to view notifications.');
+    }
+  };
+
+  const handleNotificationItemPress = async (notification) => {
+    setShowNotificationModal(false);
+    
+    // Navigate to the item if it exists
+    if (notification.itemId) {
+      try {
+        // First, determine which collection the item might be in
+        // Start with active items
+        let itemData = null;
+        let itemStatus = 'active';
+        
+        // Try active collection first
+        try {
+          const activeItemRef = doc(db, 'listings/listings/active', notification.itemId);
+          const activeItemDoc = await getDoc(activeItemRef);
+          if (activeItemDoc.exists()) {
+            itemData = { 
+              id: activeItemDoc.id, 
+              ...activeItemDoc.data(),
+              status: 'active'
+            };
+          }
+        } catch (error) {
+        }
+        
+        // If not found in active, try sold collection
+        if (!itemData) {
+          try {
+            const soldItemRef = doc(db, 'listings/listings/sold', notification.itemId);
+            const soldItemDoc = await getDoc(soldItemRef);
+            if (soldItemDoc.exists()) {
+              itemData = { 
+                id: soldItemDoc.id, 
+                ...soldItemDoc.data(),
+                status: 'sold'
+              };
+            }
+          } catch (error) {
+          }
+        }
+        
+        // If not found in sold, try expired collection
+        if (!itemData) {
+          try {
+            const expiredItemRef = doc(db, 'listings/listings/expired', notification.itemId);
+            const expiredItemDoc = await getDoc(expiredItemRef);
+            if (expiredItemDoc.exists()) {
+              itemData = { 
+                id: expiredItemDoc.id, 
+                ...expiredItemDoc.data(),
+                status: 'expired'
+              };
+            }
+          } catch (error) {
+          }
+        }
+        
+        if (itemData) {
+          navigation.navigate('UserItemScreen', { item: itemData });
+        } else {
+          Alert.alert('Item Not Found', 'This auction item is no longer available.');
+        }
+      } catch (error) {
+        Alert.alert('Error', 'Failed to load item details.');
+      }
+    }
   };
 
   const handleFilterPress = (filterType) => {
@@ -378,8 +485,15 @@ export default function HomeScreen() {
             <Text style={styles.welcomeText}>Welcome back,</Text>
             <Text style={styles.userName}>{userName}!</Text>
           </View>
-          <TouchableOpacity style={styles.notificationIcon}>
+          <TouchableOpacity style={styles.notificationIcon} onPress={handleNotificationPress}>
             <Ionicons name="notifications-outline" size={24} color={Colors.DARK_BLUE} />
+            {unreadNotificationCount > 0 && (
+              <View style={styles.notificationBadge}>
+                <Text style={styles.notificationBadgeText}>
+                  {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -541,6 +655,14 @@ export default function HomeScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Notification Modal */}
+      <NotificationModal
+        visible={showNotificationModal}
+        onClose={() => setShowNotificationModal(false)}
+        userId={currentUserId}
+        onNotificationPress={handleNotificationItemPress}
+      />
     </SafeAreaView>
   );
 }
@@ -569,6 +691,25 @@ const styles = StyleSheet.create({
   },
   notificationIcon: {
     padding: 8,
+    position: 'relative',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    backgroundColor: Colors.PRIMARY_GREEN,
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: Colors.BACKGROUND_WHITE,
+  },
+  notificationBadgeText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: Colors.BACKGROUND_WHITE,
   },
   featuredSection: {
     paddingHorizontal: 20,

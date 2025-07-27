@@ -43,7 +43,7 @@ export default function UsersScreen() {
           const user = User.fromFirestore(doc);
           usersData.push(user);
         } catch (error) {
-          console.error('Error parsing user document:', doc.id, error);
+          
         }
       });
       
@@ -51,7 +51,6 @@ export default function UsersScreen() {
       setFilteredUsers(usersData);
       
     } catch (error) {
-      console.error('Error fetching users:', error);
       Alert.alert('Error', 'Failed to load users. Please try again.');
     } finally {
       setIsLoading(false);
@@ -99,7 +98,6 @@ export default function UsersScreen() {
         day: 'numeric'
       });
     } catch (error) {
-      console.error('Error formatting date:', error);
       return 'Unknown';
     }
   };
@@ -107,7 +105,7 @@ export default function UsersScreen() {
   const handleUserPress = (user) => {
     // Navigate to user details - can be implemented later
     // For now, just basic user info logging for debugging
-    console.log('User pressed:', user.getDisplayName());
+    
   };
 
   const renderUserItem = ({ item }) => {

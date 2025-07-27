@@ -34,7 +34,7 @@ export default function SettingsScreen({}) {
       await signOut(auth);
       navigation.reset({
         index: 0,
-        routes: [{ name: 'AdminLoginScreen' }],
+        routes: [{ name: 'LoginScreen', params: { defaultTab: 'Admin' } }],
       });
     } catch (error) {
       alert('Logout failed!');
@@ -44,22 +44,22 @@ export default function SettingsScreen({}) {
   const handleSettingPress = (settingId) => {
     switch(settingId) {
       case 'account-details':
-        console.log('Account Details pressed');
+        
         break;
       case 'change-password':
-        console.log('Change Password pressed');
+        
         break;
       case 'app-settings':
-        console.log('App Settings pressed');
+        
         break;
       case 'help-support':
-        console.log('Help & Support pressed');
+        
         break;
       case 'manage-listings':
-        console.log('Manage Listings pressed');
+        
         break;
       case 'manage-users':
-        console.log('Manage Users pressed');
+        
         break;
       default:
         break;

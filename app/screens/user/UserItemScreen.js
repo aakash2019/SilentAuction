@@ -21,6 +21,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { collection, getDocs, query, orderBy, doc, setDoc, updateDoc, addDoc, getDoc, increment } from 'firebase/firestore';
 import { db, auth } from '../../firebase';
 import { onAuthStateChanged } from 'firebase/auth';
+import NotificationService from '../../services/NotificationService';
 
 const { width } = Dimensions.get('window');
 
@@ -42,11 +43,6 @@ export default function UserItemScreen() {
   const [topBidAmount, setTopBidAmount] = useState(0);
   const [currentUserId, setCurrentUserId] = useState(null);
 
-  console.log('Current User ID:', currentUserId);
-  console.log('User is top bidder:', userIsTopBidder);
-  console.log('Top bid amount:', topBidAmount);
-  console.log('Number of bidders:', bidders.length);
-
   // Determine photos array - handle both single photo and array
   const photos = item?.photos 
     ? (Array.isArray(item.photos) ? item.photos : [item.photos])
@@ -58,8 +54,6 @@ export default function UserItemScreen() {
     
     setIsLoadingBidders(true);
     try {
-      console.log('Fetching bidders for item:', item.id);
-      
       // Get the collection path based on item status
       let collectionPath;
       if (item.status === 'active') {
@@ -105,7 +99,6 @@ export default function UserItemScreen() {
             });
           }
         } catch (userError) {
-          console.error(`Error fetching user data for ${bidData.bidderId}:`, userError);
           // Fallback with minimal data
           biddersData.push({
             ...bidData,
@@ -116,28 +109,21 @@ export default function UserItemScreen() {
         }
       }
 
-      console.log(`Found ${biddersData.length} bidders`);
       setBidders(biddersData);
       
       // Calculate top bid amount and check if current user is top bidder
       if (biddersData.length > 0) {
         const topBid = biddersData[0];
-        console.log('Top bidder data:', topBid);
-        console.log('Top bidder ID:', topBid.bidderId);
-        console.log('Current user ID:', currentUserId);
-        console.log('IDs match:', topBid.bidderId === currentUserId);
         
         setTopBidAmount(topBid.bidAmount);
         // Check if current user is actually the top bidder
         setUserIsTopBidder(topBid.bidderId === currentUserId);
       } else {
-        console.log('No bidders found, using starting bid');
         // No bids yet - set starting bid as top bid and user is not top bidder
         setTopBidAmount(item?.startingBid || 0);
         setUserIsTopBidder(false);
       }
     } catch (error) {
-      console.error('Error fetching bidders:', error);
       Alert.alert('Error', 'Failed to load bidders information.');
     } finally {
       setIsLoadingBidders(false);
@@ -146,6 +132,16 @@ export default function UserItemScreen() {
 
   // Calculate time remaining with seconds
   const calculateTimeRemaining = () => {
+    // Check if item is sold first
+    if (item?.status === 'sold') {
+      return { text: 'Item Sold', expired: true, sold: true };
+    }
+    
+    // Check if item is expired
+    if (item?.status === 'expired') {
+      return { text: 'Expired', expired: true };
+    }
+
     if (!item?.expiresAt) return { text: 'No expiry date', expired: true };
 
     try {
@@ -171,7 +167,6 @@ export default function UserItemScreen() {
         expired: false
       };
     } catch (error) {
-      console.error('Error calculating time remaining:', error);
       return { text: 'Unknown', expired: true };
     }
   };
@@ -180,10 +175,8 @@ export default function UserItemScreen() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
-        console.log('User authenticated with UID:', user.uid);
         setCurrentUserId(user.uid);
       } else {
-        console.log('No user authenticated');
         setCurrentUserId(null); 
       }
     });
@@ -264,20 +257,33 @@ export default function UserItemScreen() {
       // Ensure user document exists before placing bid
       await ensureUserDocument(currentUserId);
       
-      // Check if user already has a bid on this item
-      const existingBidRef = doc(db, `listings/listings/active/${item.id}/bidders`, currentUserId);
-      const existingBidSnapshot = await getDoc(existingBidRef);
-      const isNewBid = !existingBidSnapshot.exists();
+      // Check if user already has a bid on this item (for totalBids counting)
+      const existingBidsQuery = query(
+        collection(db, `listings/listings/active/${item.id}/bidders`),
+        orderBy('bidAmount', 'desc')
+      );
+      const existingBidsSnapshot = await getDocs(existingBidsQuery);
       
-      // Store minimal bid data in bidders collection using userId as document ID
+      // Check if this user has bid before
+      let userHasBidBefore = false;
+      existingBidsSnapshot.forEach((doc) => {
+        const bidData = doc.data();
+        if (bidData.bidderId === currentUserId) {
+          userHasBidBefore = true;
+        }
+      });
+      
+      const isNewBid = !userHasBidBefore;
+      
+      // Store bid data in bidders collection with auto-generated document ID
       const bidData = {
         bidderId: currentUserId,
         bidAmount: bidValue,
         bidAt: new Date().toISOString()
       };
       
-      // Add bid to the bidders collection with userId as document ID
-      await setDoc(existingBidRef, bidData);
+      // Add bid to the bidders collection with auto-generated ID
+      await addDoc(collection(db, `listings/listings/active/${item.id}/bidders`), bidData);
       
       // Update item with new top bidder info and increment total bids (only if it's a new bid)
       const itemRef = doc(db, 'listings/listings/active', item.id);
@@ -293,6 +299,18 @@ export default function UserItemScreen() {
       
       await updateDoc(itemRef, updateData);
       
+      // Create notification for other bidders
+      try {
+        await NotificationService.createBidNotification(
+          item.id,
+          item.itemName,
+          currentUserId,
+          bidValue
+        );
+      } catch (notificationError) {
+        // Don't fail the bid if notification fails
+      }
+      
       // Add minimal data to user's active bids collection with itemId as document ID
       await setDoc(doc(db, `users/${currentUserId}/active`, item.id), {
         itemId: item.id
@@ -307,7 +325,6 @@ export default function UserItemScreen() {
       Alert.alert('Success', 'Your bid has been placed successfully!');
       
     } catch (error) {
-      console.error('Error placing bid:', error);
       Alert.alert('Error', 'Failed to place bid. Please try again.');
     } finally {
       setIsPlacingBid(false);
@@ -347,10 +364,8 @@ export default function UserItemScreen() {
         };
         
         await setDoc(userDocRef, userData);
-        console.log('Created user document for:', userId);
       }
     } catch (error) {
-      console.error('Error ensuring user document:', error);
     }
   };
 
@@ -634,8 +649,17 @@ export default function UserItemScreen() {
             <Text style={styles.timerCardLabel}>Time Remaining</Text>
             {timeRemaining?.expired ? (
               <View style={styles.expiredContainer}>
-                <Ionicons name="time-outline" size={24} color="#FF6B6B" />
-                <Text style={styles.expiredText}>Auction Expired</Text>
+                {timeRemaining?.sold ? (
+                  <>
+                    <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
+                    <Text style={[styles.expiredText, { color: '#4CAF50' }]}>Item Sold</Text>
+                  </>
+                ) : (
+                  <>
+                    <Ionicons name="time-outline" size={24} color="#FF6B6B" />
+                    <Text style={styles.expiredText}>Auction Expired</Text>
+                  </>
+                )}
               </View>
             ) : (
               <View style={styles.countdownContainer}>
@@ -661,7 +685,9 @@ export default function UserItemScreen() {
               </View>
             )}
             <Text style={styles.expiryText}>
-              Expires: {formatDate(item?.expiresAt)}
+              {timeRemaining?.sold 
+                ? `Sold: ${formatDate(item?.soldAt)}` 
+                : `Expires: ${formatDate(item?.expiresAt)}`}
             </Text>
           </View>
 
@@ -673,7 +699,7 @@ export default function UserItemScreen() {
             <View style={styles.biddersHeader}>
               <Text style={styles.biddersTitle}>
                 {(() => {
-                  const totalBids = item?.totalBids || bidders.length;
+                  const totalBids = bidders.length;
                   return totalBids === 0 ? 'Bidders (No Bids Yet)' : `Bidders (${totalBids} bid${totalBids !== 1 ? 's' : ''})`;
                 })()}
               </Text>
@@ -702,12 +728,6 @@ export default function UserItemScreen() {
                   <Text style={styles.topBidderName}>
                     {(() => {
                       const isCurrentUser = topBidder.bidderId === currentUserId && currentUserId;
-                      console.log('🔍 Debug Info:');
-                      console.log('Top Bidder ID:', topBidder.bidderId);
-                      console.log('Current User ID:', currentUserId);
-                      console.log('Are they equal?', topBidder.bidderId === currentUserId);
-                      console.log('Is current user?', isCurrentUser);
-                      console.log('Full name:', topBidder.fullName);
                       
                       return isCurrentUser ? (topBidder.fullName || 'You') : 'Anonymous';
                     })()}

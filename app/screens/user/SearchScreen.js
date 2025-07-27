@@ -97,7 +97,6 @@ export default function SearchScreen() {
       }
       
     } catch (error) {
-      console.error('Error searching listings:', error);
       Alert.alert('Error', 'Failed to search listings. Please try again.');
     } finally {
       setIsSearching(false);

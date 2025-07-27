@@ -18,10 +18,11 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { collection, getDocs, doc, getDoc, setDoc, deleteDoc, query, where } from 'firebase/firestore';
 import { db } from '../../../firebase';
 import Item from '../../../models/Item';
+import NotificationService from '../../../services/NotificationService';
 
-export default function ListingsScreen() {
+export default function ListingsScreen({ route }) {
   const navigation = useNavigation();
-  const [activeTab, setActiveTab] = useState('Active');
+  const [activeTab, setActiveTab] = useState(route?.params?.initialTab || 'Active');
   const [activeItems, setActiveItems] = useState([]);
   const [soldItems, setSoldItems] = useState([]);
   const [expiredItems, setExpiredItems] = useState([]);
@@ -55,18 +56,17 @@ export default function ListingsScreen() {
       }
       
       if (expiredItems.length > 0) {
-        console.log(`Transferred ${expiredItems.length} expired items`);
+        
       }
       
     } catch (error) {
-      console.error('Error checking for expired items:', error);
+      
     }
   };
 
   // Transfer item from active to expired
   const transferItemToExpired = async (itemId, itemData) => {
     try {
-      console.log(`Transferring item ${itemId} to expired`);
       
       // 1. Add item to expired collection with updated status
       const expiredItemData = {
@@ -99,7 +99,11 @@ export default function ListingsScreen() {
         await deleteDoc(doc(db, 'listings', 'listings', 'active', itemId, 'bidders', bidderId));
       }
       
-      // 3. Update user bid records - move from active to past with won: false
+      // 3. Update user bid records - move from active to past with won status and send notifications
+      const topBidderId = itemData.topBidder;
+      const winningBid = itemData.topBidAmount || 0;
+      
+      
       for (const userId of bidderUserIds) {
         try {
           // Check if user has this item in their active bids
@@ -107,32 +111,174 @@ export default function ListingsScreen() {
           const userActiveBidSnapshot = await getDoc(userActiveBidDoc);
           
           if (userActiveBidSnapshot.exists()) {
-            // Add to user's past bids with won: false
+            // Determine if this user won (only if there's a valid top bidder)
+            const isWinner = topBidderId && userId === topBidderId;
+            
+            // Add to user's past bids with won status
             const pastBidData = {
               ...userActiveBidSnapshot.data(),
-              won: false,
+              won: isWinner,
               expiredAt: new Date().toISOString(),
-              status: 'expired'
+              status: 'expired',
+              finalBid: winningBid
             };
             
             await setDoc(doc(db, 'users', userId, 'past', itemId), pastBidData);
+            
+            // Send appropriate notification
+            try {
+              
+              if (isWinner) {
+                
+                await NotificationService.createWinNotification(
+                  userId,
+                  itemId,
+                  itemData.itemName,
+                  winningBid
+                );
+                
+              } else {
+                
+                await NotificationService.createLoseNotification(
+                  userId,
+                  itemId,
+                  itemData.itemName,
+                  winningBid
+                );
+                
+              }
+            } catch (notificationError) {
+              // Don't fail the transfer if notification fails
+            }
             
             // Remove from user's active bids
             await deleteDoc(userActiveBidDoc);
           }
         } catch (userError) {
-          console.error(`Error updating user ${userId} bid records:`, userError);
+          
         }
       }
       
       // 4. Delete item from active collection (after all subcollections are handled)
       await deleteDoc(doc(db, 'listings', 'listings', 'active', itemId));
       
-      console.log(`Successfully transferred item ${itemId} to expired`);
       
     } catch (error) {
-      console.error(`Error transferring item ${itemId} to expired:`, error);
+      
       throw error;
+    }
+  };
+
+  // Function to manually mark an item as sold and send win notification
+  const markItemAsSold = async (itemId) => {
+    try {
+      
+      // Get item data from active collection
+      const itemDoc = await getDoc(doc(db, 'listings', 'listings', 'active', itemId));
+      if (!itemDoc.exists()) {
+        throw new Error('Item not found in active collection');
+      }
+      
+      const itemData = itemDoc.data();
+      const topBidderId = itemData.topBidder;
+      const winningBid = itemData.topBidAmount || 0;
+      
+      if (!topBidderId) {
+        Alert.alert('No Winner', 'This item has no bids and cannot be marked as sold.');
+        return;
+      }
+      
+      // 1. Add item to sold collection with sold timestamp
+      const soldItemData = {
+        ...itemData,
+        soldAt: new Date().toISOString(),
+        status: 'sold'
+      };
+      await setDoc(doc(db, 'listings', 'listings', 'sold', itemId), soldItemData);
+      
+      // 2. Get all bidders for this item
+      const biddersSnapshot = await getDocs(collection(db, 'listings', 'listings', 'active', itemId, 'bidders'));
+      const bidderUserIds = biddersSnapshot.docs.map(doc => doc.id);
+      
+      // 3. Transfer bidders subcollection to sold item
+      for (const bidderId of bidderUserIds) {
+        const bidderDoc = await getDoc(doc(db, 'listings', 'listings', 'active', itemId, 'bidders', bidderId));
+        if (bidderDoc.exists()) {
+          await setDoc(doc(db, 'listings', 'listings', 'sold', itemId, 'bidders', bidderId), bidderDoc.data());
+        }
+        // Delete from active bidders
+        await deleteDoc(doc(db, 'listings', 'listings', 'active', itemId, 'bidders', bidderId));
+      }
+      
+      // 4. Update user bid records and send notifications
+      
+      for (const userId of bidderUserIds) {
+        try {
+          // Check if user has this item in their active bids
+          const userActiveBidDoc = doc(db, 'users', userId, 'active', itemId);
+          const userActiveBidSnapshot = await getDoc(userActiveBidDoc);
+          
+          if (userActiveBidSnapshot.exists()) {
+            // Determine if this user won
+            const isWinner = userId === topBidderId;
+            
+            // Add to user's past bids with won status
+            const pastBidData = {
+              ...userActiveBidSnapshot.data(),
+              won: isWinner,
+              soldAt: new Date().toISOString(),
+              status: 'sold',
+              finalBid: winningBid
+            };
+            
+            await setDoc(doc(db, 'users', userId, 'past', itemId), pastBidData);
+            
+            // Send appropriate notification
+            try {
+              
+              if (isWinner) {
+                
+                await NotificationService.createWinNotification(
+                  userId,
+                  itemId,
+                  itemData.itemName,
+                  winningBid
+                );
+                
+              } else {
+                
+                await NotificationService.createLoseNotification(
+                  userId,
+                  itemId,
+                  itemData.itemName,
+                  winningBid
+                );
+                
+              }
+            } catch (notificationError) {
+              
+            }
+            
+            // Remove from user's active bids
+            await deleteDoc(userActiveBidDoc);
+          }
+        } catch (userError) {
+          
+        }
+      }
+      
+      // 5. Delete item from active collection
+      await deleteDoc(doc(db, 'listings', 'listings', 'active', itemId));
+      
+      
+      Alert.alert('Success', `Item "${itemData.itemName}" has been marked as sold and the winner has been notified!`);
+      
+      // Refresh the items list
+      fetchItems();
+      
+    } catch (error) {
+      
+      Alert.alert('Error', 'Failed to mark item as sold. Please try again.');
     }
   };
 
@@ -162,7 +308,7 @@ export default function ListingsScreen() {
       setExpiredItems(expiredItemsList);
 
     } catch (error) {
-      console.error('Error fetching items:', error);
+      
       Alert.alert('Error', 'Failed to load listings. Please try again.');
     } finally {
       setIsLoading(false);
@@ -180,6 +326,13 @@ export default function ListingsScreen() {
     
     return () => clearInterval(intervalId);
   }, []);
+
+  // Update active tab when route params change
+  useEffect(() => {
+    if (route?.params?.initialTab) {
+      setActiveTab(route.params.initialTab);
+    }
+  }, [route?.params?.initialTab]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -213,7 +366,7 @@ export default function ListingsScreen() {
       await fetchItems();
       Alert.alert('Success', 'Checked for expired items and updated listings.');
     } catch (error) {
-      console.error('Error refreshing expired items:', error);
+      
       Alert.alert('Error', 'Failed to refresh expired items.');
     } finally {
       setIsLoading(false);
@@ -222,7 +375,7 @@ export default function ListingsScreen() {
 
   const handleListingPress = (item) => {
     // Navigate to listing details
-    console.log('Listing pressed:', item.itemName);
+    
     navigation.navigate('ItemScreen', { item });
   };
 
@@ -276,6 +429,31 @@ export default function ListingsScreen() {
         <Text style={styles.totalBids}>{item.totalBids} bids</Text>
         {activeTab === 'Active' && (
           <Text style={styles.timeRemaining}>{item.getTimeRemaining()}</Text>
+        )}
+        
+        {/* Mark as Sold button for active items with bids */}
+        {activeTab === 'Active' && item.topBidder && item.totalBids > 0 && (
+          <TouchableOpacity
+            style={styles.markSoldButton}
+            onPress={(e) => {
+              e.stopPropagation(); // Prevent triggering the main item press
+              Alert.alert(
+                'Mark as Sold',
+                `Mark "${item.itemName}" as sold? The winner will be notified.`,
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { 
+                    text: 'Mark as Sold', 
+                    style: 'destructive',
+                    onPress: () => markItemAsSold(item.id)
+                  }
+                ]
+              );
+            }}
+          >
+            <Ionicons name="checkmark-circle" size={16} color={Colors.BACKGROUND_WHITE} />
+            <Text style={styles.markSoldButtonText}>Mark as Sold</Text>
+          </TouchableOpacity>
         )}
       </View>
       <View style={styles.statusContainer}>
@@ -529,6 +707,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.TEXT_BLACK,
     fontWeight: '500',
+  },
+  markSoldButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginTop: 6,
+    alignSelf: 'flex-start',
+  },
+  markSoldButtonText: {
+    fontSize: 11,
+    color: Colors.BACKGROUND_WHITE,
+    fontWeight: '600',
+    marginLeft: 4,
   },
   statusContainer: {
     alignItems: 'flex-end',

@@ -31,12 +31,10 @@ export default function BidScreen() {
     try {
       const user = auth.currentUser;
       if (!user) {
-        console.log('No authenticated user');
         setIsLoading(false);
         return;
       }
 
-      console.log('Fetching active bids for user:', user.uid);
 
       // Get all item IDs from user's active collection
       const activeUserQuery = query(
@@ -100,15 +98,12 @@ export default function BidScreen() {
             });
           }
         } catch (error) {
-          console.error(`Error fetching item data for ${itemId}:`, error);
         }
       }
 
-      console.log(`Found ${userBids.length} active bids for user`);
       setUserBiddingItems(userBids);
       
     } catch (error) {
-      console.error('Error fetching user active bids:', error);
       Alert.alert('Error', 'Failed to load your bids. Please try again.');
     } finally {
       setIsLoading(false);
@@ -125,11 +120,9 @@ export default function BidScreen() {
     try {
       const user = auth.currentUser;
       if (!user) {
-        console.log('No authenticated user');
         return;
       }
 
-      console.log('Fetching past bids for user:', user.uid);
 
       try {
         // Get past bids from user's past collection
@@ -145,7 +138,6 @@ export default function BidScreen() {
           const pastBidData = pastDoc.data();
           const itemId = pastDoc.id; // Document ID is the item ID
           
-          console.log(`Processing past bid for item ${itemId}:`, pastBidData);
           
           try {
             // Try to get item from sold collection first
@@ -171,12 +163,10 @@ export default function BidScreen() {
                   userBidAmount = bidderDoc.data().bidAmount || 0;
                 }
               } catch (bidderError) {
-                console.error(`Error fetching user bid amount for item ${itemId}:`, bidderError);
               }
               
               const isWinner = pastBidData.won === true; // Use the 'won' field from user's past collection
               
-              console.log(`Item ${itemId} - User won: ${isWinner}, User bid: ${userBidAmount}, Final amount: ${finalBidAmount}`);
               
               userPastBids.push({
                 id: itemId,
@@ -193,21 +183,17 @@ export default function BidScreen() {
               });
             }
           } catch (error) {
-            console.error(`Error fetching past item ${itemId}:`, error);
           }
         }
 
-        console.log(`Found ${userPastBids.length} past bids`);
         setPastBids(userPastBids);
         
       } catch (collectionError) {
         // If past collection doesn't exist, it will throw an error
-        console.log('No past bids collection found for user');
         setPastBids([]);
       }
       
     } catch (error) {
-      console.error('Error fetching user past bids:', error);
       setPastBids([]);
     }
   };
@@ -257,7 +243,6 @@ export default function BidScreen() {
       });
     } else {
       // For legacy mock data, just log for now
-      console.log('Past bid pressed:', item.title);
     }
   };
 
