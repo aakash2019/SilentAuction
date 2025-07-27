@@ -162,6 +162,12 @@ export default function ProfileScreen({}) {
       
       const bidsData = [];
       
+      // Debug: Check if we have any active bids
+      if (activeBidsSnapshot.empty) {
+        setUserBids([]);
+        return;
+      }
+      
       for (const bidDoc of activeBidsSnapshot.docs) {
         const itemId = bidDoc.id; // Document ID is the item ID
         
@@ -172,10 +178,31 @@ export default function ProfileScreen({}) {
             const itemData = itemDoc.data();
             
             // Get user's bid amount for this item from bidders subcollection
-            const bidderDoc = await getDoc(doc(db, `listings/listings/active/${itemId}/bidders`, userId));
-            if (bidderDoc.exists()) {
-              const bidData = bidderDoc.data();
-              
+            // Query the bidders subcollection to find the user's bid
+            const biddersQuery = query(
+              collection(db, `listings/listings/active/${itemId}/bidders`),
+              where('bidderId', '==', userId)
+            );
+            const biddersSnapshot = await getDocs(biddersQuery);
+            
+            // If no results with 'bidderId', try with 'userId' field
+            let bidData = null;
+            if (!biddersSnapshot.empty) {
+              bidData = biddersSnapshot.docs[0].data();
+            } else {
+              // Try with userId field as fallback
+              const userIdQuery = query(
+                collection(db, `listings/listings/active/${itemId}/bidders`),
+                where('userId', '==', userId)
+              );
+              const userIdSnapshot = await getDocs(userIdQuery);
+              if (!userIdSnapshot.empty) {
+                bidData = userIdSnapshot.docs[0].data();
+              }
+            }
+            
+            // If we found bid data, add to results
+            if (bidData) {
               bidsData.push({
                 id: itemId,
                 itemName: itemData.itemName,
@@ -194,9 +221,30 @@ export default function ProfileScreen({}) {
                 isTopBidder: itemData.topBidder === userId,
                 status: 'active'
               });
+            } else {
+              // If no bid data found, create a minimal entry
+              bidsData.push({
+                id: itemId,
+                itemName: itemData.itemName,
+                description: itemData.description,
+                startingBid: itemData.startingBid,
+                currentBid: itemData.topBidAmount || itemData.startingBid,
+                topBidAmount: itemData.topBidAmount || itemData.startingBid,
+                topBidder: itemData.topBidder,
+                userBidAmount: itemData.startingBid, // Fallback to starting bid
+                bidAt: new Date().toISOString(),
+                photos: itemData.photos,
+                category: itemData.category,
+                condition: itemData.condition,
+                expiresAt: itemData.expiresAt,
+                totalBids: itemData.totalBids || 0,
+                isTopBidder: itemData.topBidder === userId,
+                status: 'active'
+              });
             }
           }
         } catch (error) {
+          // Skip this item if there's an error
         }
       }
       
@@ -205,6 +253,7 @@ export default function ProfileScreen({}) {
       setUserBids(bidsData);
       
     } catch (error) {
+      setUserBids([]);
     }
   };
 
@@ -241,11 +290,30 @@ export default function ProfileScreen({}) {
               // Get user's final bid amount from the item's bidders subcollection
               let userFinalBidAmount = 0;
               try {
-                const bidderDoc = await getDoc(doc(db, `listings/listings/${itemStatus}/${itemId}/bidders`, userId));
-                if (bidderDoc.exists()) {
-                  userFinalBidAmount = bidderDoc.data().bidAmount || 0;
+                // Query the bidders subcollection to find the user's bid
+                const biddersQuery = query(
+                  collection(db, `listings/listings/${itemStatus}/${itemId}/bidders`),
+                  where('bidderId', '==', userId)
+                );
+                const biddersSnapshot = await getDocs(biddersQuery);
+                
+                // If no results with 'bidderId', try with 'userId' field
+                if (!biddersSnapshot.empty) {
+                  userFinalBidAmount = biddersSnapshot.docs[0].data().bidAmount || 0;
+                } else {
+                  // Try with userId field as fallback
+                  const userIdQuery = query(
+                    collection(db, `listings/listings/${itemStatus}/${itemId}/bidders`),
+                    where('userId', '==', userId)
+                  );
+                  const userIdSnapshot = await getDocs(userIdQuery);
+                  if (!userIdSnapshot.empty) {
+                    userFinalBidAmount = userIdSnapshot.docs[0].data().bidAmount || 0;
+                  }
                 }
               } catch (bidderError) {
+                // If we can't find bidder data, use item's final bid amount as fallback
+                userFinalBidAmount = itemData.finalBidAmount || 0;
               }
               
               wonItemsData.push({
