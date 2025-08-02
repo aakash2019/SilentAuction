@@ -13,7 +13,9 @@ import {
   FlatList,
   Alert,
   ActivityIndicator,
-  TextInput
+  TextInput,
+  StatusBar,
+  Platform
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { Colors } from '../../constants/Colors';
@@ -552,6 +554,7 @@ export default function UserItemScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor={Colors.BACKGROUND_WHITE} />
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={handleBackPress} style={styles.backButton}>
@@ -792,6 +795,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.BACKGROUND_WHITE,
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
   header: {
     flexDirection: 'row',
@@ -800,6 +804,7 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     borderBottomWidth: 1,
     borderBottomColor: Colors.BACKGROUND_LIGHT_GRAY,
+    backgroundColor: Colors.BACKGROUND_WHITE,
   },
   backButton: {
     padding: 5,
