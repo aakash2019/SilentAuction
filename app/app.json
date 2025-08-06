@@ -28,8 +28,10 @@
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE"
-      ]
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.aakash2019.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -41,6 +43,11 @@
           "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera to take photos of auction items."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "5a37d240-08fd-4a79-b284-572f77bad5a4"
+      }
+    }
   }
 }
